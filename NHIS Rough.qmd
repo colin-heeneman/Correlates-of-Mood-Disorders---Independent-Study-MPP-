@@ -1,0 +1,1514 @@
+---
+title: "NHIS"
+author: "Colin Heneeman"
+subtitle: "Correlates of Mental Health Using NHIS Data"
+format: pdf
+editor: source
+editor_options: 
+  chunk_output_type: console
+---
+
+Apologies in advance for the length of this document! I started and before long realized things were perhaps becoming more lengthy than intended. I understand that you are very busy and may need to gloss over the less important parts here. Hoping that my general approach here is sensible. Of course, let me know if you have any questions or concerns, and what I can do to improve the sharpness and impact of this analysis.
+
+#Prep
+
+```{r}
+#load packages
+library(readr)
+library(dplyr)
+library(tidyverse)
+library(haven)
+library(psych)
+library(car)
+library(descr)
+library(DescTools) 
+library(ggpubr) 
+library(rstatix)
+library(DescTools)
+library(nortest) 
+library(emmeans)
+library(ggplot2)
+library(stargazer)
+library(corrplot)
+library(coefplot)
+```
+
+```{r}
+# read original dataset - adult22 because it is the 2022 NHIS dataset
+
+adult22 <- read_csv("adult22csv/adult22.csv")
+
+glimpse(adult22)
+```
+
+##Create Smaller Dataset
+
+```{r}
+
+# create smaller dataset
+
+adult22_cleaned <- select(adult22,
+                         PHSTAT_A, LSATIS4_A, ANXFREQ_A, ANXLEVEL_A, DEPFREQ_A, DEPLEVEL_A, GAD71_A,                          GAD72_A, GAD73_A, GAD74_A, GAD75_A, GAD76_A, GAD77_A, PHQ81_A, PHQ82_A,                              PHQ83_A, PHQ84_A, PHQ85_A, PHQ86_A, PHQ87_A, PHQ88_A, MODTPR_A,                                      VIGTPR_A,VIGFREQW_A, SLPHOURS_A, SLPREST_A, SLPFLL_A, SLPSTY_A,                                      FRUITTP_A,GADCAT_A, PHQCAT_A, SEX_A, AGEP_A, HISPALLP_A, 
+                         SALADTP_A, DRK12MWK_A,
+                         SMKNOW_A, CIGNOW_A, ECIGNOW_A,
+                         EMPWKHRS3_A,)
+
+
+# renaming to NHIS for simplicity 
+NHIS <- adult22_cleaned
+
+```
+
+# Manipulate Variables
+
+In this section, I will start to re-code and manipulate the variables of interest from the dataset to prepare for understanding correlations, model-building, and finally hypothesis testing.
+
+## Dependent Variables
+
+Below, each section is developed for one of the dependent variables of interest here.
+
+### Health Status
+
+```{r}
+# health status 
+# physical health status - PHSTAT_A
+
+# ITEM PHSTAT_A : 
+# Would you say your health in general  is excellent(1), very good (2), good (3), fair (4), or poor (5)
+
+# checking initial values
+table(NHIS$PHSTAT_A)
+
+# reverse scaling to make higher values = better health status
+
+NHIS <- NHIS %>%
+  mutate(PHSTAT_A = as.numeric(PHSTAT_A),
+         PHSTAT_A = case_when(
+           PHSTAT_A == 1 ~ 5,
+           PHSTAT_A == 2 ~ 4,
+           PHSTAT_A == 3 ~ 3,
+           PHSTAT_A == 4 ~ 2,
+           PHSTAT_A == 5 ~ 1,
+           PHSTAT_A == 7 ~ NA,
+           PHSTAT_A == 8 ~ NA,
+           PHSTAT_A == 9 ~ NA,
+           TRUE ~ PHSTAT_A))
+
+# checking to confirm proper value changes
+table (NHIS$PHSTAT_A)
+```
+
+### Life Satisfaction
+
+```{r}
+# life satisfaction - LSATIS4_A
+
+# ITEM LSATIS4_A : 'In general, how satisfied are you with your life? Are you very satisfied, satisfied, dissatisfied, or very dissatisfied? 
+
+# CODE: (Scaled 1 ~ very satisfied to 5 ~ very dissatisfied)
+
+# checking initial values
+table(NHIS$LSATIS4_A)
+
+# re-scaling so that higher values = more satisfaction
+NHIS <- NHIS %>%
+  mutate(LSATIS4_A = as.numeric(LSATIS4_A),
+         LSATIS4_A = case_when(
+           LSATIS4_A == 1 ~ 4,
+           LSATIS4_A == 2 ~ 3,
+           LSATIS4_A == 3 ~ 2,
+           LSATIS4_A == 4 ~ 1,
+           LSATIS4_A == 7 ~ NA,
+           LSATIS4_A == 8 ~ NA,
+           LSATIS4_A == 9 ~ NA,
+           TRUE ~ LSATIS4_A))
+
+# checking to confirm value changes
+table(NHIS$LSATIS4_A)
+
+
+```
+
+
+### Anxiety
+
+```{r}
+# anxiety
+
+# ITEM: ANXFREQ_A - How often do you feel anxious?
+# CODE - 1 - Daily : 5 - Never
+
+table(NHIS$ANXFREQ_A)
+
+NHIS <- NHIS %>%
+  mutate(ANXFREQ_A = as.numeric(ANXFREQ_A),
+         ANXFREQ_A = case_when(
+           ANXFREQ_A== 1 ~ 3,
+           between(ANXFREQ_A, 2, 3) ~ 2,
+           between(ANXFREQ_A, 4, 5) ~ 1,
+           ANXFREQ_A == 7 ~ NA,
+           ANXFREQ_A == 8 ~ NA,
+           ANXFREQ_A == 9 ~ NA,
+           TRUE ~ ANXFREQ_A))
+
+table(NHIS$ANXFREQ_A)
+
+summary(NHIS$ANXFREQ_A)
+
+# GAD-7 anxiety : a 7 item questionnaire typically used for diagnostic purposes of Generalized Anxiety Disorder 
+
+ # GAD71_A : Over the last two weeks, how often have you been bothered by the following problems - feeling nervous, anxious, or on edge 
+
+ # How often felt nervous/anxious/on edge past two weeks
+ # 1 - Not at all to 4 - Nearly every day
+
+table(NHIS$GAD71_A)
+
+NHIS <- NHIS %>%
+  mutate(GAD71A = as.numeric(GAD71_A),
+         GAD71_A = case_when(
+           GAD71_A== 1 ~ 1,
+           GAD71_A == 2 ~ 2,
+           GAD71_A== 3 ~ 3,
+           GAD71_A == 4 ~ 4,
+           GAD71_A == 7 ~ NA,
+           GAD71_A == 8 ~ NA,
+           GAD71_A == 9 ~ NA,
+           TRUE ~ GAD71_A))
+
+table(NHIS$GAD71_A)
+
+# GAD72_A : Not being able to stop or control worrying
+# 1 - Not at all, 2 - Several Days, 3 - More than half the days, 4 - Nearly Every day
+
+table(NHIS$GAD72_A)
+
+NHIS <- NHIS %>%
+  mutate(GAD72_A = as.numeric(GAD72_A),
+         GAD72_A = case_when(
+           GAD72_A== 1 ~ 1,
+           GAD72_A == 2 ~ 2,
+           GAD72_A== 3 ~ 3,
+           GAD72_A == 4 ~ 4,
+           GAD72_A == 7 ~ NA,
+           GAD72_A == 8 ~ NA,
+           GAD72_A == 9 ~ NA,
+           TRUE ~ GAD72_A))
+
+table(NHIS$GAD72_A)
+
+# GAD73_A
+# Over the last two weeks, how often have you been bothered by ... worrying too much about different things - 
+
+# How often worrying too much, past 2 weeks
+
+# Code : 1 - Not at all , 2 - Several days , 3 - More than half the days , 4 - Nearly every day
+
+table(NHIS$GAD73_A)
+
+NHIS <- NHIS %>%
+  mutate(GAD73_A = as.numeric(GAD73_A),
+         GAD73_A = case_when(
+           GAD73_A== 1 ~ 1,
+           GAD73_A == 2 ~ 2,
+           GAD73_A== 3 ~ 3,
+           GAD73_A == 4 ~ 4,
+           GAD73_A == 7 ~ NA,
+           GAD73_A == 8 ~ NA,
+           GAD73_A == 9 ~ NA,
+           TRUE ~ GAD73_A))
+
+table(NHIS$GAD73_A)
+
+# GAD74_A
+# Over the last two weeks, how often have you been bothered by .... 
+
+# Trouble relaxing
+
+# Code: 1 - Not at all, 2 - Several days, 3 - More than half the days, 4 - Nearly every day
+
+
+table(NHIS$GAD74_A)
+
+NHIS <- NHIS %>%
+  mutate(GAD74_A = as.numeric(GAD74_A),
+         GAD74_A = case_when(
+           GAD74_A== 1 ~ 1,
+           GAD74_A == 2 ~ 2,
+           GAD74_A== 3 ~ 3,
+           GAD74_A == 4 ~ 4,
+           GAD74_A == 7 ~ NA,
+           GAD74_A == 8 ~ NA,
+           GAD74_A == 9 ~ NA,
+           TRUE ~ GAD74_A))
+
+table(NHIS$GAD74_A)
+
+# GAD75_A
+# Over the last two weeks, how often have you been bothered by
+
+# Being so restless that it's hard to sit still
+
+# Code: 1 - Not at all, 2 - Several days, 3 - More than half the days, 4 - Nearly every day
+
+table(NHIS$GAD75_A)
+
+NHIS <- NHIS %>%
+  mutate(GAD75_A = as.numeric(GAD75_A),
+         GAD75_A = case_when(
+           GAD75_A== 1 ~ 1,
+           GAD75_A == 2 ~ 2,
+           GAD75_A== 3 ~ 3,
+           GAD75_A == 4 ~ 4,
+           GAD75_A == 7 ~ NA,
+           GAD75_A == 8 ~ NA,
+           GAD75_A == 9 ~ NA,
+           TRUE ~ GAD75_A))
+
+table(NHIS$GAD75_A)
+
+# GAD76_A
+# Over the last two weeks, how often have you been bothered by...
+
+# Becoming easily annoyed or irritable
+
+# Code: 1 - Not at all, 2 - Several days, 3 - More than half the days, 4 - Nearly every day
+
+table(NHIS$GAD76_A)
+
+NHIS <- NHIS %>%
+  mutate(GAD76_A = as.numeric(GAD76_A),
+         GAD76_A = case_when(
+           GAD76_A== 1 ~ 1,
+           GAD76_A == 2 ~ 2,
+           GAD76_A== 3 ~ 3,
+           GAD76_A == 4 ~ 4,
+           GAD76_A == 7 ~ NA,
+           GAD76_A == 8 ~ NA,
+           GAD76_A == 9 ~ NA,
+           TRUE ~ GAD76_A))
+
+table(NHIS$GAD76_A)
+
+ # GAD77_A
+table(NHIS$GAD77_A)
+
+# Over the last two weeks, how often have you been bothered by..
+
+# Feeling afraid as if something awful might happen?
+
+# Code: 1 - Not at all, 2 - Several days, 3 - More than half the days, 4 - Nearly every day
+
+NHIS <- NHIS %>%
+  mutate(GAD77_A = as.numeric(GAD77_A),
+         GAD77_A = case_when(
+           GAD77_A== 1 ~ 1,
+           GAD77_A == 2 ~ 2,
+           GAD77_A== 3 ~ 3,
+           GAD77_A == 4 ~ 4,
+           GAD77_A == 7 ~ NA,
+           GAD77_A == 8 ~ NA,
+           GAD77_A == 9 ~ NA,
+           TRUE ~ GAD77_A))
+
+table(NHIS$GAD77_A)
+
+# GADCAT_A
+# Severity of anxiety symptoms 
+
+# Code: 1 - None/Minimal, 2 - Mild, 3 - Moderate, 4 - Severe, 8 - Not Ascertained
+
+table(NHIS$GADCAT_A)
+
+NHIS <- NHIS %>%
+  mutate(GADCAT_A = as.numeric(GADCAT_A),
+         GADCAT_A = case_when(
+           GADCAT_A== 1 ~ 1,
+           GADCAT_A == 2 ~ 2,
+           GADCAT_A== 3 ~ 3,
+           GADCAT_A == 4 ~ 4,
+           GADCAT_A == 7 ~ NA,
+           GADCAT_A == 8 ~ NA,
+           GADCAT_A == 9 ~ NA,
+           TRUE ~ GADCAT_A))
+
+table(NHIS$GADCAT_A)
+
+# Calculating a GAD 'Score' for each individual to use as a measure for anxiety - essentially taking an individual's average on each of the 7 measures of GAD 
+
+NHIS$GADSCORE <- rowMeans(NHIS[, c("GAD71_A", "GAD72_A", "GAD73_A", "GAD74_A", "GAD75_A", "GAD76_A", "GAD77_A")], na.rm = TRUE)
+
+summary(NHIS$GADSCORE)
+
+```
+
+
+### Depression
+
+```{r}
+
+# depression
+ # DEPFREQ_A : How often do you feel depressed? Would you say daily, weekly, monthly, a few times a year, or never?
+
+table(NHIS$DEPFREQ_A)
+
+NHIS <- NHIS %>%
+  mutate(DEPFREQ_A = as.numeric(DEPFREQ_A),
+         DEPFREQ_A = case_when(
+           DEPFREQ_A== 1 ~ 3,
+           between(DEPFREQ_A, 2, 3) ~ 2,
+           between(DEPFREQ_A, 4, 5) ~ 1,
+           DEPFREQ_A == 7 ~ NA,
+           DEPFREQ_A == 8 ~ NA,
+           DEPFREQ_A == 9 ~ NA,
+           TRUE ~ DEPFREQ_A))
+
+table(NHIS$DEPFREQ_A)
+
+# PHQ-8 Depression : A similar 8 item questionnaire used to assess depression.
+
+# over the last two weeks, how often have you been bothered by...
+
+ # PHQ81_A
+
+ # little interest or pleasure in doing things
+
+ # 1 - Not at all, 2 - Several Days, 3 - More than half the days, 4 - Nearly every day
+
+table(NHIS$PHQ81_A)
+
+NHIS <- NHIS %>%
+  mutate(PHQ81_A = as.numeric(PHQ81_A),
+         PHQ81_A = case_when(
+           PHQ81_A== 1 ~ 1,
+           PHQ81_A == 2 ~ 2,
+           PHQ81_A== 3 ~ 3,
+           PHQ81_A == 4 ~ 4,
+           PHQ81_A == 7 ~ NA,
+           PHQ81_A == 8 ~ NA,
+           PHQ81_A == 9 ~ NA,
+           TRUE ~ PHQ81_A))
+
+table(NHIS$PHQ81_A)
+
+ # PHQ82_A
+
+ #feeling down, depressed, or hopeless
+
+ # 1 - Not at all, 2 - Several Days, 3 - More than half the days, 4 - Nearly every day
+
+table(NHIS$PHQ82_A)
+
+NHIS <- NHIS %>%
+  mutate(PHQ82_A = as.numeric(PHQ82_A),
+         PHQ82_A = case_when(
+           PHQ82_A== 1 ~ 1,
+           PHQ82_A == 2 ~ 2,
+           PHQ82_A== 3 ~ 3,
+           PHQ82_A == 4 ~ 4,
+           PHQ82_A == 7 ~ NA,
+           PHQ82_A == 8 ~ NA,
+           PHQ82_A == 9 ~ NA,
+           TRUE ~ PHQ82_A))
+
+table(NHIS$PHQ82_A)
+
+ # PHQ83_A
+
+ # trouble falling or staying asleep, or sleeping too much
+
+ # 1 - Not at all, 2 - Several Days, 3 - More than half the days, 4 - Nearly every day
+
+table(NHIS$PHQ83_A)
+
+NHIS <- NHIS %>%
+  mutate(PHQ83_A = as.numeric(PHQ83_A),
+         PHQ83_A = case_when(
+           PHQ83_A== 1 ~ 1,
+           PHQ83_A == 2 ~ 2,
+           PHQ83_A== 3 ~ 3,
+           PHQ83_A == 4 ~ 4,
+           PHQ83_A == 7 ~ NA,
+           PHQ83_A == 8 ~ NA,
+           PHQ83_A == 9 ~ NA,
+           TRUE ~ PHQ83_A))
+
+table(NHIS$PHQ83_A)
+
+ # PHQ84_A
+
+ # feeling tired or having little energy
+ # 1 - Not at all, 2 - Several Days, 3 - More than half the days, 4 - Nearly every day
+
+table(NHIS$PHQ84_A)
+
+NHIS <- NHIS %>%
+  mutate(PHQ84_A = as.numeric(PHQ84_A),
+         PHQ84_A = case_when(
+           PHQ84_A== 1 ~ 1,
+           PHQ84_A == 2 ~ 2,
+           PHQ84_A== 3 ~ 3,
+           PHQ84_A == 4 ~ 4,
+           PHQ84_A == 7 ~ NA,
+           PHQ84_A == 8 ~ NA,
+           PHQ84_A == 9 ~ NA,
+           TRUE ~ PHQ84_A))
+
+table(NHIS$PHQ84_A)
+
+
+ # PHQ85_A
+
+ # poor appetite or overeating
+ # 1 - Not at all, 2 - Several Days, 3 - More than half the days, 4 - Nearly every day
+
+table(NHIS$PHQ85_A)
+
+NHIS <- NHIS %>%
+  mutate(PHQ85_A = as.numeric(PHQ85_A),
+         PHQ85_A = case_when(
+           PHQ85_A== 1 ~ 1,
+           PHQ85_A == 2 ~ 2,
+           PHQ85_A== 3 ~ 3,
+           PHQ85_A == 4 ~ 4,
+           PHQ85_A == 7 ~ NA,
+           PHQ85_A == 8 ~ NA,
+           PHQ85_A == 9 ~ NA,
+           TRUE ~ PHQ85_A))
+
+table(NHIS$PHQ85_A)
+
+ # PHQ86_A
+
+ # feeling bad about yourself, or that you are a failure, or have let yourself or your family down
+
+ # 1 - Not at all, 2 - Several Days, 3 - More than half the days, 4 - Nearly every day
+
+table(NHIS$PHQ86_A)
+
+NHIS <- NHIS %>%
+  mutate(PHQ86_A = as.numeric(PHQ86_A),
+         PHQ86_A = case_when(
+           PHQ86_A== 1 ~ 1,
+           PHQ86_A == 2 ~ 2,
+           PHQ86_A== 3 ~ 3,
+           PHQ86_A == 4 ~ 4,
+           PHQ86_A == 7 ~ NA,
+           PHQ86_A == 8 ~ NA,
+           PHQ86_A == 9 ~ NA,
+           TRUE ~ PHQ86_A))
+
+table(NHIS$PHQ86_A)
+
+ # PHQ87_A
+
+ # trouble concentrating on things, such as reading the newspaper or watching television
+
+ # 1 - Not at all, 2 - Several Days, 3 - More than half the days, 4 - Nearly every day
+
+table(NHIS$PHQ87_A)
+
+NHIS <- NHIS %>%
+  mutate(PHQ87_A = as.numeric(PHQ87_A),
+         PHQ87_A = case_when(
+           PHQ87_A== 1 ~ 1,
+           PHQ87_A == 2 ~ 2,
+           PHQ87_A== 3 ~ 3,
+           PHQ87_A == 4 ~ 4,
+           PHQ87_A == 7 ~ NA,
+           PHQ87_A == 8 ~ NA,
+           PHQ87_A == 9 ~ NA,
+           TRUE ~ PHQ87_A))
+
+table(NHIS$PHQ87_A)
+
+
+ # PHQ88_A
+
+ # moving or speaking so slowly that other people could have noticed? Or the opposite, being so fidgety or restless that you have been moving around a lot more than usual?
+
+ # 1 - Not at all, 2 - Several Days, 3 - More than half the days, 4 - Nearly every day
+
+table(NHIS$PHQ88_A)
+
+NHIS <- NHIS %>%
+  mutate(PHQ88_A = as.numeric(PHQ88_A),
+         PHQ88_A = case_when(
+           PHQ88_A== 1 ~ 1,
+           PHQ88_A == 2 ~ 2,
+           PHQ88_A== 3 ~ 3,
+           PHQ88_A == 4 ~ 4,
+           PHQ88_A == 7 ~ NA,
+           PHQ88_A == 8 ~ NA,
+           PHQ88_A == 9 ~ NA,
+           TRUE ~ PHQ88_A))
+
+table(NHIS$PHQ88_A)
+
+
+# PHQCAT_A
+
+# How severe are your depression symptoms?
+
+# 1 - None, 2 - Mild, 3 - Moderate, 4 - Severe
+
+table(NHIS$PHQCAT_A)
+
+NHIS <- NHIS %>%
+  mutate(PHQCAT_A = as.numeric(PHQCAT_A),
+         PHQCAT_A = case_when(
+           PHQCAT_A== 1 ~ 1,
+           PHQCAT_A == 2 ~ 2,
+           PHQCAT_A== 3 ~ 3,
+           PHQCAT_A == 4 ~ 4,
+           PHQCAT_A == 7 ~ NA,
+           PHQCAT_A == 8 ~ NA,
+           PHQCAT_A == 9 ~ NA,
+           TRUE ~ PHQCAT_A))
+
+table(NHIS$PHQCAT_A)
+
+# PHQSCORE
+
+# Calculating a PHQ 'Score' for each individual to use as a measure for anxiety
+
+NHIS$PHQSCORE <- rowMeans(NHIS[, c("PHQ81_A", "PHQ82_A", "PHQ83_A", "PHQ84_A", "PHQ85_A", "PHQ86_A", "PHQ87_A", "PHQ88_A")], na.rm = TRUE)
+
+summary(NHIS$PHQSCORE)
+
+
+#MH Score
+
+# combining the 'GADSCORE' metric and 'PHQSCORE' metric to build a an overall individual 'score' for mental health. Important to note that a higher score (max of 4) indicates poor mental health while a lower score (min of 1) indicates better mental health.
+
+NHIS$MHSCORE <- rowMeans(NHIS[, c("GADSCORE", "PHQSCORE")], na.rm = TRUE)
+
+summary(NHIS$MHSCORE)
+
+
+```
+
+## Non-Modifiable Independent Variables 
+
+###SEX 
+
+```{r}
+#SEX_A, 
+
+# ITEM : Sex of Sample Adult
+# CODE: 1 - Male, 2 - Female, 7 - Refused, 8 - Not Ascertained, 9 - Don't Know
+
+table(NHIS$SEX_A)
+
+NHIS <- NHIS %>%
+  mutate(SEX_A = as.numeric(SEX_A),
+         SEX_A = case_when(
+           SEX_A == 1 ~ ' Male',
+           SEX_A == 2 ~ 'Female ',
+           SEX_A == 7 ~ NA_character_,
+           SEX_A == 8 ~ NA_character_,
+           SEX_A == 9 ~ NA_character_,
+           TRUE ~ as.character(SEX_A)))
+
+table(NHIS$SEX_A)
+
+
+```
+
+###AGE 
+
+```{r}
+
+#AGEP_A
+
+# ITEM : Age of selected adult
+
+table(NHIS$AGEP_A)
+
+# making the var more useful by translating it into four generational buckets
+
+NHIS <- NHIS %>%
+  mutate(AGEP_A = as.numeric(AGEP_A),
+         AGEP_A = case_when(
+           between(AGEP_A, 18, 25) ~ 'gen z',
+           between(AGEP_A, 26, 39) ~ 'millenial',
+           between(AGEP_A, 40, 64) ~ 'gen x',
+           between(AGEP_A, 65, 85) ~ 'baby boomer',
+           AGEP_A == 97 ~ NA_character_,
+           AGEP_A == 98 ~ NA_character_,
+           AGEP_A == 99 ~ NA_character_,
+           TRUE ~ as.character(AGEP_A)))
+
+table(NHIS$AGEP_A)
+
+```
+
+
+###RACE
+```{r}
+
+# Race variable is HISPALLP_A
+#HISPALLP_A
+
+table(NHIS$HISPALLP_A)
+
+NHIS <- NHIS %>%
+  mutate(HISPALLP_A = as.numeric(HISPALLP_A),
+         HISPALLP_A = case_when(
+           HISPALLP_A == 1 ~ ' Hispanic ',
+           HISPALLP_A == 2 ~ ' White ',
+           HISPALLP_A == 3 ~ ' Black ',
+           HISPALLP_A == 4 ~ ' Asian ',
+           between(HISPALLP_A, 5, 7) ~ 'Other',
+           HISPALLP_A == 7 ~ NA_character_,
+           HISPALLP_A == 8 ~ NA_character_,
+           HISPALLP_A == 9 ~ NA_character_,
+           TRUE ~ as.character(HISPALLP_A)))
+
+table(NHIS$HISPALLP_A)
+
+
+```
+
+## Modifiable Independent Variables
+
+### Exercise
+
+```{r}
+
+#MODTPR_A
+
+# time period for moderate leisure time physical activities
+
+# CODE - 0 - Never, 1 - Per day, 2 - Per week, 3 - Per month, 4 - Per year
+
+table(NHIS$MODTPR_A)
+
+NHIS <- NHIS %>%
+  mutate(MODTPR_A = as.numeric(MODTPR_A),
+         MODTPR_A = case_when(
+           MODTPR_A == 0 ~ 1,
+           MODTPR_A == 1 ~ 5,
+           MODTPR_A == 2 ~ 4,
+           MODTPR_A == 3 ~ 3,
+           MODTPR_A == 4 ~ 2,
+           MODTPR_A == 7 ~ NA,
+           MODTPR_A == 8 ~ NA,
+           MODTPR_A == 9 ~ NA,
+           TRUE ~ MODTPR_A))
+
+table(NHIS$MODTPR_A)
+
+#VIGTPR_A
+
+# frequency of vigorous physical activity times per week
+
+# CODE - 0  Never, 1 - Per day, 2 - Per week, 3 - Per month, 4 - Per year
+
+table(NHIS$VIGTPR_A)
+
+NHIS <- NHIS %>%
+  mutate(VIGTPR_A = as.numeric(VIGTPR_A),
+         VIGTPR_A = case_when(
+           VIGTPR_A == 0 ~ 1,
+           VIGTPR_A == 1 ~ 5,
+           VIGTPR_A == 2 ~ 4,
+           VIGTPR_A == 3 ~ 3,
+           VIGTPR_A == 4 ~ 2,
+           VIGTPR_A == 7 ~ NA,
+           VIGTPR_A == 8 ~ NA,
+           VIGTPR_A == 9 ~ NA,
+           TRUE ~ VIGTPR_A))
+
+table(NHIS$VIGTPR_A)
+
+
+# EXSCORE
+# averaging individual responsed to VIGTPR and MODTPR to create an 'exercise score'
+
+NHIS$EXSCORE <- rowMeans(NHIS[, c("MODTPR_A", "VIGTPR_A")], na.rm = TRUE)
+
+summary(NHIS$EXSCORE)
+
+```
+
+
+### Sleep
+
+```{r}
+# SLEEP
+
+#SLPHOURS_A
+
+# On average, how many hours of sleep do you get in a 24-hour period?
+
+# Range of values - 00 - 24 , 97-99 are NAs
+
+table(NHIS$SLPHOURS_A)
+
+NHIS <- NHIS %>%
+  mutate(SLPHOURS_A = as.numeric(SLPHOURS_A),
+         SLPHOURS_A = case_when(
+           between(SLPHOURS_A, 0, 6) ~ 0,
+           between(SLPHOURS_A, 7, 9) ~ 1,
+           between(SLPHOURS_A,10, 24) ~ 0,
+           SLPHOURS_A == 97 ~ NA,
+           SLPHOURS_A == 98 ~ NA,
+           SLPHOURS_A == 99 ~ NA,
+           TRUE ~ SLPHOURS_A))
+
+#SLPREST_A
+
+# How often did you wake up feeling well-rested
+
+# Code: 1 - Never, 2 - Some days, 3 - Most days, 4 - Every day
+
+table(NHIS$SLPREST_A)
+
+NHIS <- NHIS %>%
+  mutate(SLPREST_A = as.numeric(SLPREST_A),
+         SLPREST_A = case_when(
+           SLPREST_A == 1 ~ 1,
+           SLPREST_A == 2 ~ 2,
+           SLPREST_A == 3 ~ 3,
+           SLPREST_A == 4 ~ 4,
+           SLPREST_A == 7 ~ NA,
+           SLPREST_A == 8 ~ NA,
+           SLPREST_A == 9 ~ NA,
+           TRUE ~ SLPREST_A))
+
+table(NHIS$SLPREST_A)
+```
+
+
+
+### Diet
+```{r}
+# DIET
+
+#FRUITTP_A
+# Number of times eat fruit - time period
+# CODE: 0 - Never, 1 - Day, 2 - Week, 3 - Month
+
+table(NHIS$FRUITTP_A)
+summary(NHIS$FRUITTP_A)
+
+NHIS <- NHIS %>%
+  mutate(FRUITTP_A = as.numeric(FRUITTP_A),
+         FRUITTP_A = case_when(
+           FRUITTP_A == 0 ~ 1,
+           FRUITTP_A == 1 ~ 4,
+           FRUITTP_A == 2 ~ 3,
+           FRUITTP_A == 3 ~ 2,
+           FRUITTP_A == 7 ~ NA,
+           FRUITTP_A == 8 ~ NA,
+           FRUITTP_A == 9 ~ NA,
+           TRUE ~ FRUITTP_A))
+
+
+# SALADTP_A
+# Number of times eat salad 0 time period
+# Code - 0 - Never, 1 - Day, 2 - Week, 3 - Month,
+table(NHIS$SALADTP_A)
+
+
+NHIS <- NHIS %>%
+  mutate(SALADTP_A = as.numeric(SALADTP_A),
+         SALADTP_A = case_when(
+           SALADTP_A == 0 ~ 1,
+           SALADTP_A == 1 ~ 4,
+           SALADTP_A == 2 ~ 3,
+           SALADTP_A == 3 ~ 2,
+           SALADTP_A == 7 ~ NA,
+           SALADTP_A == 8 ~ NA,
+           SALADTP_A == 9 ~ NA,
+           TRUE ~ SALADTP_A))
+
+table(NHIS$SALADTP_A)
+
+# Combined fruits + vegetables score
+
+# Calculating a FRUITxVEG 'Score' for each individual to use as a measure for diet
+
+NHIS$FRUITxVEG<- rowMeans(NHIS[, c("FRUITTP_A", "SALADTP_A")], na.rm = TRUE)
+
+summary(NHIS$FRUITxVEG)
+
+
+
+
+```
+
+### Alcohol
+
+```{r}
+# ALCOHOL
+
+# DRK12MWK_A
+# Days drank alcohol per week, past 12M
+# CODE: 00 - Less than one day per week, 1-7 days per week, 95 - No drinks in last year
+
+table(NHIS$DRK12MWK_A)
+
+# keep 0 as 0, add '95' to 0
+NHIS <- NHIS %>%
+  mutate(DRK12MWK_A = as.numeric(DRK12MWK_A),
+         DRK12MWK_A = case_when(
+           DRK12MWK_A == 00 ~ 0,
+           DRK12MWK_A == 95 ~ 0,
+           DRK12MWK_A == 97 ~ NA,
+           DRK12MWK_A == 98 ~ NA,
+           DRK12MWK_A == 99 ~ NA,
+           TRUE ~ DRK12MWK_A))
+
+table(NHIS$DRK12MWK_A)
+
+```
+
+
+
+### Smoking
+```{r}
+# SMOKING
+
+#SMKNOW_A
+# Do you now smoke cigarettes every day, some days, or not at all
+# CODE: 1- Every day. 2 - Some days, 3 - Not at all, 7 - 9 - NA
+table(NHIS$SMKNOW_A)
+
+NHIS <- NHIS %>%
+  mutate(SMKNOW_A = as.numeric(SMKNOW_A),
+         SMKNOW_A = case_when(
+           SMKNOW_A == 1 ~ 3,
+           SMKNOW_A == 2 ~ 2,
+           SMKNOW_A == 3 ~ 1,
+           SMKNOW_A == 7 ~ NA,
+           SMKNOW_A == 8 ~ NA,
+           SMKNOW_A == 9 ~ NA,
+           TRUE ~ SMKNOW_A))
+
+table(NHIS$SMKNOW_A)
+
+
+# ECIGNOW_A
+# Do you now use e-cigarettes or other electronic vaping products every day, some days, or not at all
+# CODE: 1 - Every day, 2 - Some days, 3 - Not at all, 7,8,9 - NA
+table(NHIS$ECIGNOW_A)
+
+
+NHIS <- NHIS %>%
+  mutate(ECIGNOW_A = as.numeric(ECIGNOW_A),
+         ECIGNOW_A = case_when(
+           ECIGNOW_A == 1 ~ 3,
+           ECIGNOW_A == 2 ~ 2,
+           ECIGNOW_A == 3 ~ 1,
+           ECIGNOW_A == 7 ~ NA,
+           ECIGNOW_A == 8 ~ NA,
+           ECIGNOW_A == 9 ~ NA,
+           TRUE ~ ECIGNOW_A))
+
+table(NHIS$ECIGNOW_A)
+
+
+# creating index of these two variables related to smoking 
+NHIS$LUNGS<- rowMeans(NHIS[, c("ECIGNOW_A", "SMKNOW_A")], na.rm = TRUE)
+
+summary(NHIS$LUNGS)
+
+```
+
+
+### Work
+
+```{r}
+# WORK
+
+#EMPWKHRS3_A
+# Hours worked per week
+# Code:01 - 94, 95+ , 97 refused, 98 - Not Ascertained, 99 - Don't Know
+
+table(NHIS$EMPWKHRS3_A)
+summary(NHIS$EMPWKHRS3_A)
+
+NHIS <- NHIS %>%
+  mutate(EMPWKHRS3_A = as.numeric(EMPWKHRS3_A),
+         EMPWKHRS3_A = case_when(
+           between(EMPWKHRS3_A, 0, 39) ~  'Part Time',
+           EMPWKHRS3_A == 40 ~ 'Full Time',
+           between(EMPWKHRS3_A, 41, 95) ~ 'More than Full Time',
+           EMPWKHRS3_A == 97 ~ NA,
+           EMPWKHRS3_A == 98 ~ NA,
+           EMPWKHRS3_A == 99 ~ NA,
+           TRUE ~ as.character(EMPWKHRS3_A)))
+
+
+table(NHIS$EMPWKHRS3_A)
+
+
+```
+
+
+# Testing Relationships
+
+```{r}
+# correlations
+
+ # mental health score and life satisfaction
+cor.test(NHIS$MHSCORE, NHIS$LSATIS4_A)
+
+# of depression measures
+cor.test(NHIS$PHQSCORE, NHIS$DEPFREQ_A, na.rm=T)
+
+cor.test(NHIS$PHQSCORE, NHIS$MHSCORE)
+
+# of anxiety measures
+cor.test(NHIS$GADSCORE, NHIS$ANXFREQ_A)
+
+cor.test(NHIS$GADSCORE, NHIS$MHSCORE)
+
+# of anxieety and depression measures 
+cor.test(NHIS$ANXFREQ_A, NHIS$DEPFREQ_A)
+
+cor.test(NHIS$GADSCORE, NHIS$PHQSCORE)
+```
+
+# Modelling
+
+## Single Variable
+
+```{r}
+
+# EXERCISE single variable models
+
+# Exercise on health status
+
+ #  health status by  exercise
+hstat_modex <- lm(PHSTAT_A ~ EXSCORE, data = NHIS)
+
+summary(hstat_modex)
+
+# Exercise on life satisfaction
+
+ # life satisfaction by moderate exercise
+lsat_modex <- lm(LSATIS4_A ~ EXSCORE, data = NHIS)
+
+summary(lsat_modex)
+
+# Exercise on depression
+
+dep_ex <- lm(DEPFREQ_A ~ EXSCORE, data = NHIS)
+summary(dep_ex)
+  
+# Exercise on anxiety
+
+anx_ex <- lm(ANXFREQ_A ~ EXSCORE, data = NHIS)
+
+summary(anx_ex)
+
+# exercise on overall mental health
+mh_ex <- lm(MHSCORE ~ EXSCORE, data = NHIS)
+
+summary(mh_ex)
+
+
+```
+
+```{r}
+
+# DIET single variable models
+
+# Diet on life satisfaction
+
+lsat_diet <- lm(LSATIS4_A ~ FRUITxVEG, data = NHIS)
+
+summary(lsat_diet)
+
+# Diet on health status
+
+mstat_diet <- lm(PHSTAT_A ~ FRUITxVEG, data = NHIS)
+
+summary(mstat_diet)
+
+# Diet on depression
+
+dep_diet<- lm(DEPFREQ_A ~ FRUITxVEG, data = NHIS)
+
+summary(dep_diet)
+
+# Diet on anxiety
+anx_diet <- lm(ANXFREQ_A ~ FRUITxVEG, data = NHIS)
+
+summary(anx_diet)
+
+mh_diet <- lm(MHSCORE ~ FRUITxVEG, data = NHIS)
+
+summary(mh_diet)
+
+```
+
+
+```{r}
+
+# SLEEP single variable models
+
+# life satisfaction regressed by sleep
+lsat_sleep <- lm(LSATIS4_A ~ SLPREST_A, data = NHIS)
+summary(lsat_sleep)
+
+# health status regressed by sleep
+hstat_sleep <- lm(PHSTAT_A ~ SLPREST_A, data = NHIS)
+summary(hstat_sleep)
+
+# anxiety regressed by sleep
+anx_sleep <- lm(ANXFREQ_A ~ SLPREST_A, data = NHIS)
+summary(anx_sleep)
+
+# depression regressed by sleep
+dep_sleep <- lm(DEPFREQ_A ~ SLPREST_A, data = NHIS)
+summary(dep_sleep)
+
+mh_sleep <- lm(MHSCORE ~ SLPREST_A, data = NHIS)
+summary(mh_sleep)
+```
+
+
+```{r}
+
+# ALCOHOL SINGLE VARIABLE MODELS
+
+# Alcohol on anxiety
+
+alcanx <- lm(GADSCORE ~  DRK12MWK_A, data = NHIS)
+
+summary(alcanx)
+
+# Alcohol on Depression
+alcdep <- lm(PHQSCORE ~  DRK12MWK_A, data = NHIS)
+
+summary(alcdep)
+
+```
+
+```{r}
+
+# SMOKING single variable models
+
+# overall mental health
+smoke_mh <- lm(MHSCORE ~  LUNGS, data = NHIS)
+
+summary(smoke_mh)
+
+# amxiety using GAD score
+smoking_anxiety <- lm(GADSCORE ~ LUNGS, data = NHIS)
+
+summary(smoking_anxiety)
+
+# anxiety using ANXFREQ
+
+smoking_anxiety2 <- lm(ANXFREQ_A ~ LUNGS, data = NHIS)
+
+summary(smoking_anxiety2)
+
+
+```
+
+
+
+```{r}
+# EMPLOYMENT single variable models
+
+# work on mental health
+
+mh_work <- lm(MHSCORE ~ EMPWKHRS3_A, data = NHIS)
+
+mh_work
+
+# work on depression specifically
+dep_work <- lm(PHQSCORE ~ EMPWKHRS3_A, data = NHIS)
+
+dep_work
+
+
+# work on anxiety specifically
+anx_work <- lm(GADSCORE ~ EMPWKHRS3_A, data = NHIS)
+
+anx_work
+
+
+```
+
+
+## Multivariable
+
+```{r}
+# Non-Modifiable Fundamentals
+
+#overall mental health
+nonmodif_fund_mod <- lm(MHSCORE ~ SEX_A + AGEP_A + HISPALLP_A, data = NHIS)
+
+summary(nonmodif_fund_mod)
+
+#anxiety
+anx_nonmodif1 <- lm(ANXFREQ_A ~ SEX_A + AGEP_A + HISPALLP_A, data = NHIS)
+
+summary(anx_nonmodif1)
+
+anx_nonmodif2 <- lm(GADSCORE ~ SEX_A + AGEP_A + HISPALLP_A, data = NHIS)
+summary(anx_nonmodif2)
+
+
+#depression
+dep_nonmodif1 <- lm(DEPFREQ_A ~ SEX_A + AGEP_A + HISPALLP_A, data = NHIS)
+
+summary(dep_nonmodif1)
+
+dep_nonmodif2 <- lm(PHQSCORE ~ SEX_A + AGEP_A + HISPALLP_A, data = NHIS)
+summary(dep_nonmodif2)
+
+
+```
+
+```{r}
+# Modifiable Fundamentals Basket - Sleep, Diet, Exercise
+
+modif_fund_mod <- lm(MHSCORE ~ SLPREST_A + EXSCORE + FRUITxVEG,  data = NHIS)
+
+summary(modif_fund_mod)
+
+# Modifiable others
+
+modif_extras_mod <- lm(MHSCORE ~ DRK12MWK_A + LUNGS + EMPWKHRS3_A, data = NHIS)
+
+summary(modif_extras_mod)
+```
+
+```{r}
+
+# Total Model (All Modifiable Independent Variables)
+
+total_mod <- lm(MHSCORE ~  EXSCORE + FRUITxVEG + SLPREST_A + DRK12MWK_A + LUNGS + EMPWKHRS3_A, data = NHIS)
+
+summary(total_mod)
+
+
+# Main Depression Models
+
+ # using DEPFREQ
+dep_main_1 <- lm(DEPFREQ_A ~ SLPREST_A + EXSCORE + FRUITxVEG + DRK12MWK_A + EMPWKHRS3_A, data = NHIS)
+
+summary(dep_main_1)
+
+
+ # using PHQ
+dep_main_2 <- lm(PHQSCORE ~ SLPREST_A + EXSCORE + FRUITxVEG + DRK12MWK_A + EMPWKHRS3_A, data = NHIS)
+
+summary(dep_main_2)
+
+```
+
+# Visualization
+
+## Main
+
+```{r}
+
+# residuals plot of main models
+
+plot(total_mod)
+
+plot(modif_fund_mod)
+
+plot(nonmodif_fund_mod)
+
+
+```
+
+
+```{r}
+
+# corrolelogram
+
+# create smaller dataset with numeric variables
+smaller <- select(NHIS,
+                ANXFREQ_A,
+                DEPFREQ_A,
+                MHSCORE,
+                GADSCORE,
+                PHQSCORE,
+                EXSCORE,
+                FRUITxVEG,
+                SLPREST_A,
+                DRK12MWK_A,
+                LUNGS,
+               )
+
+# set correlation
+corr <- cor(smaller, use = "complete.obs")
+
+ 
+# corrplot
+corrplot(corr, 
+        type = "lower", 
+        method = "circle", 
+        col = c("orchid", "white", "seagreen4"), 
+        addCoef.col = "black", 
+        tl.col = "black", 
+        tl.srt = 80, 
+        diag = FALSE,
+        title = "Correlogram of NHIS",
+        order = "hclust", 
+        addrect = 8)
+
+
+# total model coefficients
+coefplot(total_mod) + 
+scale_x_continuous(limits = c(-1, 1))
+
+
+# main model Rsquared values
+r2_values<- data.frame(
+  Model = c("Non-Modifiable Fundamentals", "Modifiable Fundamentals", "Total Model"),
+  R_squared = c(0.03, 0.18, 0.19) 
+)
+
+
+ggplot(r2_values, aes(x = Model, y = R_squared, fill = Model)) +
+  geom_bar(stat = "identity", width = 0.5) +
+  theme_minimal() +
+  labs(title = "Comparison of R-squared Values", x = "Model", y = "R-squared Value") +
+  scale_fill_brewer(palette = "Pastel1") 
+
+
+```
+
+## Specific
+```{r}
+
+# Using Box-Plots to display differences in MH score across demographic variables
+
+# Sex and Mental Health Score
+
+theme_set(theme_classic())
+
+MHSCOREvSEX_plot <- ggplot(NHIS, aes(SEX_A, MHSCORE))
+MHSCOREvSEX_plot + geom_boxplot(varwidth=T, fill="plum") + 
+    labs(title="Box plot", 
+         subtitle="MHSCORE by Sex",
+         caption="Source: MHSCORE",
+         x="Sex",
+         y="MHSCORE")
+
+# Race
+
+theme_set(theme_classic())
+
+MHSCOREvRACE_plot <- ggplot(NHIS, aes(HISPALLP_A, MHSCORE))
+MHSCOREvRACE_plot + geom_boxplot(varwidth=T, fill="plum") + 
+    labs(title="Box plot", 
+         subtitle="MHSCORE by Race",
+         caption="Source: MHSCORE",
+         x="Race",
+         y="MHSCORE")
+
+# Age
+
+theme_set(theme_classic())
+
+AGEvRACE_plot <- ggplot(NHIS, aes(AGEP_A, MHSCORE))
+AGEvRACE_plot + geom_boxplot(varwidth=T, fill="plum") + 
+    labs(title="Box plot", 
+         subtitle="MHSCORE by Age",
+         caption="Source: MHSCORE",
+         x="Generation",
+         y="MHSCORE")
+
+
+```
+
+# Interpretations / Results of Hypotheses
+
+Base interpretations of our hypotheses, which will be expanded upon further particularly in the realm of practical significance in the later deliverables. 
+
+## Main
+
+H1 : Modifiable factors will hold more predictive power for mental health outcomes than the non-modifiable factors
+  
+```{r}
+
+# table comparing relevant models
+stargazer(nonmodif_fund_mod, modif_fund_mod, total_mod,
+ type = "text",
+ add.lines = list(c("Model Name", "Non-Modifiable Fundamentals", "Modifiable Fundamentals", "All Modifiables")))
+
+
+```
+  
+
+Results: H1 is confirmed by the fact that the R-squared values of the modif_fund_mod (.18) and total_mod (.195) are higher than that of nonmodif_fund_mod (.03). 
+
+H2 :  Modifiable basics such as sleep, exercise, and diet will have the more predictive power than the additional modifiable independent variables. 
+ 
+```{r}
+summary(modif_fund_mod)
+summary(modif_extras_mod)
+```
+  
+Results: H2 is confirmed as the R-squared value for the modif_fund_mod (.18) is higher than that of the modif_extras_mod (.008).
+
+## Modifiable Factors
+
+H3: Higher exercise scores are associated with better mental health score. This correlation will be higher for depression than anxiety.
+
+
+```{r}
+
+summary(mh_ex)
+
+cor.test(NHIS$EXSCORE, NHIS$GADSCORE)
+
+cor.test(NHIS$EXSCORE, NHIS$PHQSCORE)
+
+
+```
+   
+
+Results: H3 is confirmed by the fact that the beta coefficient on the mh_ex model is negative, and the correlation between 'EXSCORE' and 'GADSCORE' is lower than that between 'EXSCORE' and 'PHQSCORE'.
+
+H4: Higher sleep scores associated with better mental health outcomes, more for depression than anxiety.
+
+```{r}
+
+summary(mh_sleep)
+
+cor.test(NHIS$SLPREST_A, NHIS$GADSCORE)
+
+cor.test(NHIS$SLPREST_A, NHIS$PHQSCORE)
+
+
+```
+
+  
+Results: H4 is confirmed by the fact that the beta coefficient on the mh_sleep model is negative, and the correlation between 'SLPREST_A' and 'GADSCORE' is lower than that between 'SLPREST_A' and 'PHQSCORE'.
+
+H5: Higher nutrition scores associated with better mental health outcomes, more for depression than anxiety.
+
+```{r}
+
+summary(mh_diet)
+
+cor.test(NHIS$FRUITxVEG, NHIS$GADSCORE)
+
+cor.test(NHIS$FRUITxVEG, NHIS$PHQSCORE)
+
+
+
+```
+   
+  
+Results: H5 is confirmed by the fact that the beta coefficient on the mh_diet model is negative, and the correlation between 'FRUITxVEG' and 'GADSCORE' is lower than that between 'FRUITxVEG' and 'PHQSCORE'.
+
+H6: For depression, a stronger association with drinking than smoking.
+   
+```{r}
+
+cor.test(NHIS$LUNGS, NHIS$PHQSCORE)
+
+cor.test(NHIS$DRK12MWK_A, NHIS$PHQSCORE)
+
+```
+   
+  
+Results:H6 not confirmed. Smoking and PHQ score are in the expected direction with a correlation of .09, but alcohol use and PHQ score are in the opposite direction (more drinking associated with lower PHQ score) at -.03.
+ 
+H7: For anxiety, a stronger association with smoking than drinking.
+  
+```{r}
+
+cor.test(NHIS$LUNGS, NHIS$GADSCORE)
+
+cor.test(NHIS$DRK12MWK_A, NHIS$GADSCORE)
+
+
+```
+  
+Results: H7 confirmed. Smoking and GADSCORE correlated at .11 whereas drinking and GADSCORE are correlated at -.02.
+
+H8: Weekly hours of work beyond full time are associated with lower mental health scores.
+
+  
+```{r}
+
+summary(total_mod)
+
+
+```
+  
+  
+Results: H8 not confirmed. In our total model, beta coefficient for workers beyond full time is negative (meaning a better average mental health score) at -.006. It is important to note, however, that this did not reach significance with a p-value of .6.
+  
+
+## Non-Modifiable Factors
+H9: Gen Z and Boomers with lowest average mental health scores, Millennial and Gen X better.
+
+```{r}
+
+mh_age <- lm(MHSCORE ~ AGEP_A, data = NHIS)
+
+summary(mh_age)
+
+summary(nonmodif_fund_mod)
+
+
+```
+  
+  
+Results: H9 not confirmed. There seems to an inverse relationships in our models between Age or generation and mental health score. As the generation and age decrease, the beta coefficients in our model increase, indicating poorer mental health. These effects are statistically significant.
+
+H10: Female group will have worse average mental health score, these differences more pronounced for depression than anxiety.
+  
+```{r}
+mh_sex <- lm(MHSCORE ~ SEX_A, data=NHIS)
+
+summary(mh_sex)
+
+dep_sex <-lm(PHQSCORE ~ SEX_A, data=NHIS)
+
+summary(dep_sex)
+
+anx_sex <- lm(GADSCORE ~ SEX_A, data = NHIS)
+
+summary(anx_sex)
+
+
+
+```
+  
+Results: H10 partially confirmed. Female grouping is slightly more associated with mental health score, depression score, and anxiety score. These effects are statistically significant. However, the beta coefficient for 'Female' on anxiety is about the same but slightly higher than for 'Female' on depression. 
+
+H11: No significant differences in average mental health scores across racial groups. 
+  
+```{r}
+
+mh_race <- lm(MHSCORE ~ HISPALLP_A, data=NHIS)
+
+summary(mh_race)
+
+summary(nonmodif_fund_mod)
+
+
+```
+  
+  
+Results: H12 not confirmed. Statistically significant differences across racial groups when estimating mental health score. Race 'Other' and 'White' have most unfavorable beta coefficients, trailed by 'Black' and 'Hispanic' with 'Asian' having the most favorable. 
+
+# Limitations
+
+Some ideas for limitations which will be discussed fully in the final deliverables (Presentation and Policy Memo)
+
+*diet variable*
+Still considering the changing of or removing of the main diet variable (FRUITxVEG), as this is a rather limited index for capturing the complexity of a quality diet model. Unfortnuately, there are significant limitations from the survey design in this area which make it difficult to form a quality index variable for diet.
+
+*causal uncertainty*
+The old 'correlation does not mean causation' quip is relevant here. This isn't to say that correlation is meaningless here (especially because of the potentially cyclical nature of these relationships), but rather to state up front that interpretations of many of our models are limited in terms of causal inference because of a various considerations - they are non-longitudinal, potential for confounding variables or omitted variable bias, and reverse causality.
+
+
